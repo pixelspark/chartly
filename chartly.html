@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<!--	Chartly.js: interactively build charts in the browser using d3.js and Blockly.
+		Copyright (c) 2015 Tommy van der Vorst
+
+ 		Permission is hereby granted, free of charge, to any person
+ 		obtaining a copy of this software and associated documentation
+ 		files (the "Software"), to deal in the Software without
+ 		restriction, including without limitation the rights to use,
+ 		copy, modify, merge, publish, distribute, sublicense, and/or sell
+ 		copies of the Software, and to permit persons to whom the
+ 		Software is furnished to do so, subject to the following
+ 		conditions:
+
+ 		The above copyright notice and this permission notice shall be
+ 		included in all copies or substantial portions of the Software.
+
+ 		THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ 		EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ 		OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ 		NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ 		HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ 		WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ 		FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ 		OTHER DEALINGS IN THE SOFTWARE. -->
+<html>
+	<head>
+		<meta charset="utf-8"/>
+		<title>Chartly</title>
+		<link rel="stylesheet" href="chartly.css" type="text/css" />
+
+		<!-- All styles that should apply to the chart's SVG should be placed here. It is copied to
+		a separate painting context for export to PNG. -->
+		<style id="svgStyle">
+			svg text {
+				font-family: "Verdana";
+				font-size: 11px;
+			}
+		</style>
+	</head>
+	
+	<body onload="init()">
+		<div id="toolbar">
+			<a href="javascript:void(0);" onclick="run(false);">Run all</a>
+			<a href="javascript:void(0);" onclick="run(true);">Run selection</a>
+			<a href="javascript:void(0);" onclick="requestDownload(JSON.stringify(generate()), 'chart.json');">Get JSON</a>
+			<a href="javascript:void(0);" onclick="save();">Save</a>
+			<a href="javascript:void(0);" onclick="saveXML();">Get XML</a>
+			<a href="javascript:void(0);" onclick="loadXML();">Load XML</a>
+			<a href="javascript:void(0);" onclick="savePNG();">Save PNG</a>
+
+			<a href="javascript:void(0);" onclick="loadExample('table');">Table</a>
+			<a href="javascript:void(0);" onclick="loadExample('bars');">Bar</a>
+			<a href="javascript:void(0);" onclick="loadExample('scatter');">Scatter</a>
+		</div>
+		
+		<div id="container">
+			<div id="blockly"></div>
+			<div id="canvas" class="chartlyCanvas"></div>
+		</div>
+		
+		<script type="text/javascript" src="blockly_compressed.js"></script>		
+		<script type="text/javascript" src="d3.v2.min.js"></script>
+		<script type="text/javascript" src="chartly.js"></script>
+		
+		<script type="text/javascript">
+			// Context menus.
+			var chartly = null;
+
+			function init() {
+				chartly = new Chartly();
+				var root = document.getElementById('blockly');
+
+				var options = chartly.getBlocklyOptions();
+				options.path = '';
+				Blockly.inject(root, options);
+				
+				if(window.localStorage["chartlyXML"]) {
+					var s = Blockly.Xml.textToDom(window.localStorage["chartlyXML"]);
+					Blockly.Xml.domToWorkspace(Blockly.mainWorkspace, s);
+				}
+			}
+
+			// Fetch a resource using AJAX. callback = function(err, data).
+			function fetch(url, callback) {
+				var request = new XMLHttpRequest();
+				request.onreadystatechange = function () {
+				    var DONE = this.DONE || 4;
+				    if (this.readyState === DONE) {
+				    	if(this.status != 200) {
+				    		return callback("Server returned error status " + this.status + ". " + this.responseText);
+				    	}
+
+				        console.log(this);
+				        return callback(null, this.responseText);
+				    }
+				};
+
+				request.open('GET', url, true);
+				request.send(null);
+			}
+
+			function loadExample(name) {
+				fetch("examples/"+name+".xml", function(err, data) {
+					if(err) return alert(err);
+
+					var s = Blockly.Xml.textToDom(data);
+					Blockly.Xml.domToWorkspace(Blockly.mainWorkspace, s);
+				});
+			}
+			
+			function savePNG() {
+				var svg = d3.select("#canvas").select("svg");
+				svg.attr("version", 1.1).attr("xmlns", "http://www.w3.org/2000/svg");
+				var css = document.querySelector("#svgStyle").cloneNode(true);
+				svg.node().appendChild(css);
+				var html = svg.node().parentNode.innerHTML;
+				var imgsrc = 'data:image/svg+xml;base64,'+ btoa(html);
+
+				var canvas = document.createElement("canvas");
+				d3.select(canvas).attr("width", svg.attr("width")).attr("height", svg.attr("height"));
+				context = canvas.getContext("2d");
+
+				var image = new Image;
+				image.src = imgsrc;
+				//console.log(image);
+				image.onload = function() {
+					context.drawImage(image, 0, 0);
+					var canvasdata = canvas.toDataURL("image/png");
+					requestDownload(canvasdata, "chart.png");
+				};
+			}
+
+			function requestDownload(url, friendlyName) {
+				var a = document.createElement("a");
+				a.download = friendlyName;
+				a.href = url;
+				a.click();
+			}
+
+			function save() {
+				var r = Blockly.Xml.workspaceToDom(Blockly.mainWorkspace);
+				window.localStorage["chartlyXML"] = Blockly.Xml.domToText(r);
+			}
+
+			function loadXML() {
+				var xml = prompt("XML code");
+				if(xml) {
+					var s = Blockly.Xml.textToDom(xml);
+					Blockly.Xml.domToWorkspace(Blockly.mainWorkspace, s);
+				}
+			}
+			
+			function saveXML() {
+				var r = Blockly.Xml.workspaceToDom(Blockly.mainWorkspace);
+				var url = "data:text/plain;charset=utf8,"+escape(Blockly.Xml.domToText(r));
+				requestDownload(url, "chart.xml");
+			}
+			
+			function generate(selectionOnly) {
+				var rootBlock = Blockly.selected;
+				if(!selectionOnly) {
+					var blocks = Blockly.mainWorkspace.getTopBlocks();
+					if(blocks.length>0) {
+						rootBlock = blocks[0];
+						
+					}
+				}
+				return chartly.codeForBlock(rootBlock);
+			}
+			
+			function run(selectionOnly) {
+				var canvas = d3.select("#canvas");
+				canvas.selectAll("*").remove();
+				var svg = canvas.append("svg")
+					.attr("width", canvas.node().offsetWidth)
+					.attr("height", canvas.node().offsetHeight);
+				
+				var visualizer = generate(selectionOnly);
+
+				// Variables accessible in block code				
+				try {
+					var rowCount = Math.random()*24;
+					var columnCount = Math.random()*24;
+
+					var rows = [];
+					for(var a=0; a<rowCount; a++) {
+						var row = [];
+						for(var b=0; b<columnCount; b++) {
+							row.push(Math.round(Math.random()*24,1));
+						}
+						rows.push(row);
+					}
+
+					var names = [];
+					for(var a=0; a<columnCount; a++) {
+						names.push("c"+a);
+					}
+
+					var state = new DiaState();
+					state.data = rows;
+					state.columnNames = names;
+					state.push(svg);
+					svg.append("rect").attr("width", "100%").attr("height", "100%").style("fill", "transparent");
+					chartly.runCode(visualizer, state);
+				}
+				catch(e) {
+					console.log(e, e.stack);
+					alert("Error: "+e);
+				}
+			}
+		</script>
+	</body>
+</html>
