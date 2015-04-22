@@ -2,7 +2,9 @@
 
 Chartly.js is a web component that allows end users to create ('program') a chart using the Blockly
 visual programming environment. Charts are 'compiled' to a JSON specification for the chart. At run
-time, Chartly interprets the JSON and draws the chart using d3.js. 
+time, Chartly interprets the JSON and draws the chart using d3.js.
+
+[Try Chartly here](http://pixelspark.github.io/chartly/)
 
 ## How to use
 
